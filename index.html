@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Arshman Anil">
+    <title>PyCJ - Professional IDE</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <header class="top-navbar">
+            <div class="header-left">
+                <div class="branding">
+                    <img src="logo.png" alt="PyCJ Logo" class="brand-icon">
+                    <h1>PyCJ</h1>
+                </div>
+            </div>
+            
+            <div class="header-center">
+                <div class="responsive-tabs">
+                    <button id="tab-code" class="tab-link active">
+                        <span class="tab-icon">📝</span> Editor
+                    </button>
+                    <button id="tab-console" class="tab-link">
+                        <span class="tab-icon">💻</span> Terminal
+                    </button>
+                </div>
+            </div>
+            
+            <div class="header-right">
+                <div class="control-cluster" id="control-cluster">
+                    <div class="persistence-setting-group">
+                        <span class="toggle-caption">Autosave</span>
+                        <label class="switch-ui">
+                            <input type="checkbox" id="persistence-toggle">
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+                    <button id="theme-toggle" class="btn btn-secondary">🌓 Theme</button>
+                    <button id="download-book-btn" class="btn btn-secondary">📘 Get PyCJ Book</button>
+                    <button id="open-vault-btn" class="btn btn-secondary">🗄️ Snippets Vault</button>
+                </div>
+                
+                <button id="run-btn" class="btn btn-primary">▶️ Run</button>
+                
+                <button id="menu-toggle" class="menu-hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+            </div>
+        </header>
+
+        <main class="workspace-viewport show-editor" id="workspace">
+            <section class="panel editor-panel">
+                <div class="panel-header">
+                    <span class="panel-title">Active Script Editor</span>
+                </div>
+                <div class="editor-scroll-container">
+                    <div class="editor-workarea">
+                        <div id="highlight-layer" class="highlight-container">
+                            <pre id="highlight-content"></pre>
+                        </div>
+                        <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel console-panel">
+                <div class="panel-header">
+                    <span class="panel-title">Interactive Terminal</span>
+                </div>
+                <div id="console" class="console-body"></div>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <p>Made By <a href="https://www.instagram.com/code_with_arshman_anil/" target="_blank" rel="noopener noreferrer">Arshman Anil</a></p>
+        </footer>
+    </div>
+
+    <div id="welcome-modal" class="vault-overlay">
+        <div class="vault-window welcome-window">
+            <div class="vault-header">
+                <h3>🚀 Welcome to PyCJ</h3>
+                <button id="close-welcome-btn" class="vault-close">&times;</button>
+            </div>
+            <div class="vault-body">
+                <p style="font-size: 14px; line-height: 1.6; color: var(--text-color);">
+                    Welcome to the official environment for writing PyCJ! Since there isn't a built-in tutorial just yet, we highly recommend downloading the <strong>PyCJ Simple Book</strong>.
+                    <br><br>
+                    It is a step-by-step guide to help you master the language, understand variables, set up loops, and print to the console.
+                </p>
+                <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button id="welcome-download-btn" class="btn btn-primary">📘 Download PyCJ Book (PDF)</button>
+                    <button id="welcome-dismiss-btn" class="btn btn-secondary">Maybe Later</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="vault-modal" class="vault-overlay">
+        <div class="vault-window">
+            <div class="vault-header">
+                <h3>🗄️ Ultimate Code Snippets Vault</h3>
+                <button id="close-vault-btn" class="vault-close">&times;</button>
+            </div>
+            <div class="vault-body">
+                
+                <div class="vault-category">
+                    <h4>📦 Data Declarations & Variables</h4>
+                    <div class="vault-card" data-snippet="imagine score = 100">
+                        <code>imagine identifier = value</code>
+                        <span class="vault-desc">Basic number assignment context.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="imagine status = true">
+                        <code>imagine status = true</code>
+                        <span class="vault-desc">Boolean conditional state flag.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="imagine prices = [10.5, 20.3, 99.9]">
+                        <code>imagine list = [...]</code>
+                        <span class="vault-desc">Array/List collection structure.</span>
+                    </div>
+                </div>
+
+                <div class="vault-category">
+                    <h4>📥 Stream Pipelines (I/O)</h4>
+                    <div class="vault-card" data-snippet="output(&quot;System check complete.&quot;)">
+                        <code>output(expression)</code>
+                        <span class="vault-desc">Standard text stream print matrix.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="output(p&quot;Live Evaluation Result: {score}&quot;)">
+                        <code>output(p&quot;... {var}&quot;)</code>
+                        <span class="vault-desc">String interpolation with dynamic template frames.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="ask int userAge = &quot;Provide Current Age: &quot;">
+                        <code>ask int identifier = &quot;Prompt&quot;</code>
+                        <span class="vault-desc">Strict type reading context for integers.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="ask str nickname = &quot;Choose Character Alias: &quot;">
+                        <code>ask str identifier = &quot;Prompt&quot;</code>
+                        <span class="vault-desc">Strict type reading context for strings.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="ask bool confirm = &quot;Accept Terms (true/false)? &quot;">
+                        <code>ask bool identifier = &quot;Prompt&quot;</code>
+                        <span class="vault-desc">Strict type reading context for Booleans.</span>
+                    </div>
+                </div>
+
+                <div class="vault-category">
+                    <h4>🚦 Logic & Flow Controls</h4>
+                    <div class="vault-card" data-snippet="if score &gt;= 90 {&#10;    output(&quot;Rank Achieved: Absolute S-Tier&quot;)&#10;} elif score &gt;= 50 {&#10;    output(&quot;Rank Achieved: Standard Pass&quot;)&#10;} else {&#10;    output(&quot;Rank Achieved: Trial Pending&quot;)&#10;}">
+                        <code>if / elif / else Matrix</code>
+                        <span class="vault-desc">Complete logical structure branching architecture.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="if userAge &gt;= 18 and confirm == true {&#10;    output(&quot;Access granted.&quot;)&#10;}">
+                        <code>Logical AND Operations</code>
+                        <span class="vault-desc">Evaluates multiple target expressions simultaneously.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="for (imagine i = 1 , i &lt;= 5 , i ++) {&#10;    output(p&quot;Current loop tracker index: {i}&quot;)&#10;}">
+                        <code>for (initialization , condition , step)</code>
+                        <span class="vault-desc">Bracket-safe loop splitting with iterative variables.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="imagine counter = 10&#10;repeat counter &gt; 0 {&#10;    output(p&quot;Countdown active: {counter}&quot;)&#10;    counter = counter - 1&#10;}">
+                        <code>repeat conditional { }</code>
+                        <span class="vault-desc">Standard continuous loop sequence blocks.</span>
+                    </div>
+                </div>
+
+                <div class="vault-category">
+                    <h4>🧮 Math Calculations & Array Tracking</h4>
+                    <div class="vault-card" data-snippet="imagine checkRemainder = 15 % 4">
+                        <code>% Modulo Evaluation</code>
+                        <span class="vault-desc">Determines division remainder configurations.</span>
+                    </div>
+                    <div class="vault-card" data-snippet="imagine collection = [10, 20, 30]&#10;imagine trackingLength = collection.length&#10;output(p&quot;Array sizing state: {trackingLength}&quot;)">
+                        <code>.length Mapping</code>
+                        <span class="vault-desc">Inquire size metadata fields of active list vectors.</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-notification" class="toast-alert">Copied to Clipboard! 🚀</div>
+
+    <script src="compiler.js"></script>
+</body>
+</html>

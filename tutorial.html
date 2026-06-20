@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyCJ Simple Book</title>
+    <style>
+        /* High Contrast & Professional Fonts */
+        :root {
+            --primary-blue: #0056b3;
+            --accent-green: #0b8043;
+            --text-dark: #1a1a1a;
+            --page-bg: #ffffff;
+            --screen-bg: #e0e0e0;
+            --code-bg: #1e1e1e;
+            --code-text: #e8f2ff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-dark);
+            background-color: var(--screen-bg);
+            margin: 0;
+            padding: 20px;
+            font-size: 16pt;
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* A4 Page Styling for Screen */
+        .page {
+            background-color: var(--page-bg);
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        h1 { font-size: 3.2em; color: var(--primary-blue); text-align: center; margin-bottom: 10px; }
+        h2 { font-size: 2.2em; color: var(--accent-green); border-bottom: 3px solid var(--accent-green); padding-bottom: 10px; margin-top: 0;}
+        h3 { font-size: 1.8em; color: var(--primary-blue); text-align: center; }
+        
+        p { margin-bottom: 20px; color: var(--text-dark); font-weight: 400; }
+
+        /* High Contrast Code Boxes */
+        .code-box {
+            background-color: var(--code-bg);
+            color: var(--code-text);
+            font-family: 'Consolas', 'Courier New', monospace;
+            padding: 25px;
+            border-radius: 8px;
+            font-size: 1.2em;
+            text-align: left;
+            margin: 25px 0;
+            border-left: 6px solid var(--primary-blue);
+        }
+
+        /* Information Boxes */
+        .fun-fact {
+            background-color: #f0f7ff;
+            border: 2px solid #b3d4ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .fun-fact h4 { margin: 0 0 10px 0; color: #004085; font-size: 1.2em; }
+        .fun-fact p { margin: 0; color: #004085; }
+
+        .try-this {
+            background-color: #f6ffed;
+            border: 2px solid #b7eb8f;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .try-this h4 { margin: 0 0 10px 0; color: #237804; font-size: 1.2em; }
+        .try-this p { margin: 0; color: #237804; }
+
+        .warning-box {
+            background-color: #fff1f0;
+            border: 3px solid #ffa39e;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .warning-box h1 { color: #cf1322; font-size: 2.5em; }
+        .warning-box p { color: #a8071a; font-weight: bold; }
+
+        /* Index List */
+        ul.index-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        ul.index-list li {
+            font-size: 1.3em;
+            background: #fafafa;
+            margin: 12px 0;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #e8e8e8;
+            color: var(--text-dark);
+            font-weight: bold;
+        }
+
+        .center-text { text-align: center; }
+
+        /* Print Settings strictly for A4 */
+        @page { size: A4; margin: 0; }
+        @media print {
+            body { 
+                background-color: white; 
+                margin: 0; 
+                padding: 0; 
+                display: block; 
+            }
+            .page { 
+                width: 210mm; 
+                height: 297mm; /* Exact A4 height */
+                min-height: 297mm;
+                margin: 0; 
+                box-shadow: none; 
+                page-break-after: always;
+                border: none;
+            }
+            /* Prevent boxes from breaking across pages */
+            .fun-fact, .try-this, .code-box, h2 { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ================= PAGE 1: TITLE PAGE ================= -->
+    <div class="page center-text">
+        <h1>PyCJ Simple Book</h1>
+        <h2 style="border: none;">Made By Arshman Anil</h2>
+        <br><br>
+        <p style="font-size: 1.5em; color: #555;">A simple, professional guide to learning computer programming.</p>
+        <p style="font-size: 1.3em; color: #555;">Perfect for beginners taking their first steps into coding.</p>
+    </div>
+
+    <!-- ================= PAGE 2: WARNING & MOTTO ================= -->
+    <div class="page">
+        <div class="warning-box">
+            <h1>⚠️ Beta Version ⚠️</h1>
+            <p>Welcome to PyCJ! Please note that this programming language is currently in its BETA testing phase.</p>
+        </div>
+        <br><br>
+        <div class="center-text">
+            <h2 style="border: none; color: var(--primary-blue);">Our Mission</h2>
+            <p style="font-size: 1.4em; font-style: italic;">"To help beginners master the fundamentals of logic, so they can easily understand any other programming language in the future."</p>
+        </div>
+    </div>
+
+    <!-- ================= PAGE 3: INDEX ================= -->
+    <div class="page">
+        <h2>Table of Contents</h2>
+        <ul class="index-list">
+            <li>Step 1: What is a Variable?</li>
+            <li>Step 2: Saving Words (Strings)</li>
+            <li>Step 3: Saving Numbers</li>
+            <li>Step 4: True or False Flags</li>
+            <li>Step 5: Showing Output on Screen</li>
+            <li>Step 6: Mixing Words and Variables</li>
+            <li>Step 7: The 'If' Choice Check</li>
+            <li>Step 8: The 'Else' Backup Plan</li>
+            <li>Step 9: The Repeat Loop</li>
+            <li>Step 10: The For Loop</li>
+        </ul>
+    </div>
+
+    <!-- ================= LESSON 1 ================= -->
+    <div class="page">
+        <h2>Step 1: What is a Variable?</h2>
+        <p>A variable is like a digital storage box. You can put a piece of information inside this box and give it a name. By giving it a short, clear name, the computer will remember it for you.</p>
+        
+        <div class="code-box">
+            imagine myBox = 5
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Definition</h4>
+            <p>We use the special keyword <b>imagine</b> to tell the computer to create a brand new box in its memory.</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Write a line of code to make a box named <b>myScore</b> and put the number <b>100</b> inside it.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 2 ================= -->
+    <div class="page">
+        <h2>Step 2: Saving Words</h2>
+        <p>When you want to save letters or words, you must put them inside quotation marks. The quotation marks tell the computer that it is looking at plain text, not a programming command.</p>
+        
+        <div class="code-box">
+            imagine myName = "Arshman Anil"
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Definition</h4>
+            <p>In the programming world, words and sentences placed inside quotation marks are officially called <b>Strings</b>.</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Create a variable named <b>myFood</b> and save the string <b>"Pizza"</b> inside it.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 3 ================= -->
+    <div class="page">
+        <h2>Step 3: Saving Numbers</h2>
+        <p>Unlike words, numbers do not need quotation marks. You can save standard whole numbers, or you can use a decimal point to save exact measurements.</p>
+        
+        <div class="code-box">
+            imagine myCoins = 10<br>
+            imagine myHeight = 5.8
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Pro Tip</h4>
+            <p>Because there are no quotes around them, the computer knows these are numbers. This means you can add, subtract, and multiply them later!</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Make a box named <b>myAge</b> and put your current age inside it without using quotes.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 4 ================= -->
+    <div class="page">
+        <h2>Step 4: True or False Flags</h2>
+        <p>Sometimes you only need to know if something is "On" or "Off". In PyCJ, we use the word <b>true</b> to mean "On/Yes", and <b>false</b> to mean "Off/No".</p>
+        
+        <div class="code-box">
+            imagine isGameOn = true<br>
+            imagine isGameOver = false
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Definition</h4>
+            <p>These true/false variables are called <b>Booleans</b>. They help the computer make very fast decisions.</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Create a variable named <b>isHappy</b> and set its value to <b>true</b>.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 5 ================= -->
+    <div class="page">
+        <h2>Step 5: Showing Output</h2>
+        <p>A program needs to talk to the user. To see what is hidden inside your variables, or to print a message, you use the <b>output</b> command. This will show the result directly on the screen.</p>
+        
+        <div class="code-box">
+            output("System is starting...")<br>
+            output(myCoins)
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Pro Tip</h4>
+            <p>If you put a variable's name inside the output parentheses, the computer opens the box and prints the value inside it.</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Write the code needed to display the message <b>"Good Job!"</b> on the screen.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 6 ================= -->
+    <div class="page">
+        <h2>Step 6: Mixing Words and Variables</h2>
+        <p>Sometimes you want to print a sentence that includes a variable. By typing the letter <b>p</b> right before your quotation marks, you unlock the ability to inject variables using curly brackets <b>{ }</b>.</p>
+        
+        <div class="code-box">
+            output(p"Welcome back, {myName}!")
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Definition</h4>
+            <p>This feature is called <b>Interpolation</b>. The computer automatically replaces the curly brackets with your saved data.</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Print a message that says <b>"I have {myCoins} coins"</b> using the 'p' string method.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 7 ================= -->
+    <div class="page">
+        <h2>Step 7: The 'If' Choice Check</h2>
+        <p>Programs need to make decisions. An <b>if</b> statement checks a condition. If that condition is true, the computer runs the secret code hidden inside the curly brackets.</p>
+        
+        <div class="code-box">
+            if myCoins > 5 {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;output("You have enough coins to play!")<br>
+            }
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Pro Tip</h4>
+            <p>If the check fails (for example, if you only have 2 coins), the computer simply skips the brackets and does nothing.</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Write an <b>if</b> check to see if the variable <b>myScore</b> is greater than 50.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 8 ================= -->
+    <div class="page">
+        <h2>Step 8: The 'Else' Backup Plan</h2>
+        <p>What happens when your <b>if</b> condition fails? You can provide a safe backup plan using the <b>else</b> command. This ensures your program always knows what to do.</p>
+        
+        <div class="code-box">
+            if myCoins > 5 {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;output("You win!")<br>
+            } else {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;output("You need more coins. Try again!")<br>
+            }
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Definition</h4>
+            <p>The <b>else</b> block does not need a condition to check. It is the default action that handles everything else.</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Add an <b>else</b> block to your previous code that prints <b>"Game Over"</b> if the score is not high enough.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 9 ================= -->
+    <div class="page">
+        <h2>Step 9: The Repeat Loop</h2>
+        <p>If you want the computer to do the same task over and over again, you use a loop. The <b>repeat</b> loop works exactly like an 'if' statement, but it keeps running its code until the condition becomes false.</p>
+        
+        <div class="code-box">
+            imagine energy = 3<br><br>
+            repeat energy > 0 {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;output("Running...")<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;energy = energy - 1<br>
+            }
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Warning</h4>
+            <p>Always remember to change the variable inside the loop (like subtracting energy). If the condition is always true, the loop will run forever and crash your program!</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Write a repeat loop that prints "Jumping!" as long as a <b>stamina</b> variable is greater than 0.</p>
+        </div>
+    </div>
+
+    <!-- ================= LESSON 10 ================= -->
+    <div class="page">
+        <h2>Step 10: The For Loop</h2>
+        <p>When you know exactly how many times you want a loop to run, the <b>for</b> loop is the best tool. It keeps all your counting rules neatly organized inside parentheses.</p>
+        
+        <div class="code-box">
+            for (imagine i = 1, i <= 5, i = i + 1) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;output(p"This is loop number {i}")<br>
+            }
+        </div>
+
+        <div class="fun-fact">
+            <h4>💡 Definition</h4>
+            <p>A for loop has 3 parts separated by commas: The <b>Start</b> (imagine i = 1), the <b>Rule</b> (i <= 5), and the <b>Step</b> (i = i + 1).</p>
+        </div>
+
+        <div class="try-this">
+            <h4>✍️ Try This</h4>
+            <p>Write a <b>for</b> loop that counts from 1 to 10 and outputs the number each time.</p>
+        </div>
+    </div>
+
+    <!-- ================= CONCLUSION PAGE ================= -->
+    <div class="page center-text">
+        <h1 style="font-size: 5em; margin-bottom: 0;">🎉</h1>
+        <h2 style="border: none; font-size: 3em;">Congratulations!</h2>
+        <p style="font-size: 1.5em; font-weight: bold;">You have completed the PyCJ Simple Book.</p>
+        <p style="font-size: 1.3em;">You now understand the core fundamentals of programming. You know how to store data, make decisions, and repeat actions.</p>
+        <p style="font-size: 1.3em;">Keep practicing, keep experimenting, and keep writing amazing code!</p>
+        <br><br><br>
+        <h3 style="color: #888;">PyCJ - Created By Arshman Anil</h3>
+    </div>
+
+</body>
+</html>
