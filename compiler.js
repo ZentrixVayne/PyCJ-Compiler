@@ -1,8 +1,10 @@
 /**
- * PyCJ Language Engine Core Specification (v1.5 Final - Patched)
+ * PyCJ Language Engine Core Specification (v1.6 Final - Arrays Patched)
  * Added: Model Versioning (v1 vs v1.1) and LocalStorage Persistence.
  * Added: Automatic Version Upgrade Handlers via Custom Themed Modal.
  * Fixed: Fully implemented missing layout tabs, hamburger, theme toggles, code vault copying, and welcome lifecycle handlers.
+ * Fixed: Auto-closing mapping for curly braces {}.
+ * Added: Professional Array Manipulation (add, remove, max, min) across global scope, structures, and p-strings.
  */
 
 window.PyCJTerminalIO = {
@@ -262,9 +264,17 @@ class PyCJCompiler {
             });
             operationalText = currentLineText.trim();
 
+            // Core Logic Translations
             currentLineText = currentLineText.replace(/\band\b/gi, '&&');
             currentLineText = currentLineText.replace(/\bor\b/gi, '||');
             currentLineText = currentLineText.replace(/\bnot\b/gi, '!');
+
+            // PyCJ Professional Array Method Translations
+            currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.max\([^)]*\)/g, 'Math.max(...$1)');
+            currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.min\([^)]*\)/g, 'Math.min(...$1)');
+            currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.add\(([^)]+)\)/g, '$1.push($2)');
+            currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.remove\(([^)]+)\)/g, '(function(a,v){let i=a.indexOf(v);if(i!==-1)a.splice(i,1);return a;})($1,$2)');
+
             operationalText = currentLineText.trim();
 
             stringBank = stringBank.map(str => {
@@ -273,7 +283,11 @@ class PyCJCompiler {
                     let mappedBody = body.replace(/\{([^}]+)\}/g, (match, expr) => {
                         let cleanExpr = expr.replace(/\band\b/gi, '&&')
                                             .replace(/\bor\b/gi, '||')
-                                            .replace(/\bnot\b/gi, '!');
+                                            .replace(/\bnot\b/gi, '!')
+                                            .replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.max\([^)]*\)/g, 'Math.max(...$1)')
+                                            .replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.min\([^)]*\)/g, 'Math.min(...$1)')
+                                            .replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.add\(([^)]+)\)/g, '$1.push($2)')
+                                            .replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.remove\(([^)]+)\)/g, '(function(a,v){let i=a.indexOf(v);if(i!==-1)a.splice(i,1);return a;})($1,$2)');
                         return `\${${cleanExpr}}`;
                     });
                     return `\`${mappedBody}\``;
@@ -620,7 +634,7 @@ const PyCJStudioIDE = {
             txt += ' ';
         }
 
-        const unifiedTokensRegex = /(\/\/.*|#.*)|(p?".*?"|'.*?')|\b(imagine|repeat|for|if|elif|else|ask|and|or|not|function|return|structure)\b|\b(output)\b|\b(str|int|float|bool)\b|\b(\d+(?:\.\d+)?)\b/gi;
+        const unifiedTokensRegex = /(\/\/.*|#.*)|(p?".*?"|'.*?')|\b(imagine|repeat|for|if|elif|else|ask|and|or|not|function|return|structure)\b|\b(output|add|remove|max|min)\b|\b(str|int|float|bool)\b|\b(\d+(?:\.\d+)?)\b/gi;
 
         let HTMLOutput = txt.replace(unifiedTokensRegex, (match, comment, string, keyword, builtin, datatype, number) => {
             if (comment !== undefined) return `<span class="token-comment">${match}</span>`;
@@ -669,7 +683,7 @@ const PyCJStudioIDE = {
             return;
         }
 
-        const activePairs = { '(': ')', '[': ']', '"': '"', "'": "'" };
+        const activePairs = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'" };
 
         if (activePairs[e.key] !== undefined) {
             e.preventDefault();
@@ -740,8 +754,8 @@ const PyCJStudioIDE = {
         const welcomeModal = document.getElementById('welcome-modal');
         const closeWelcomeBtn = document.getElementById('close-welcome-btn');
         const welcomeDismissBtn = document.getElementById('welcome-dismiss-btn');
-        const downloadBookBtn = document.getElementById('download-book-btn');
-        const welcomeDownloadBtn = document.getElementById('welcome-download-btn');
+        const helpBtn = document.getElementById('help-btn');
+        const welcomeDocsBtn = document.getElementById('welcome-docs-btn');
         const menuToggle = document.getElementById('menu-toggle');
         const controlCluster = document.getElementById('control-cluster');
         const tabCode = document.getElementById('tab-code');
@@ -750,7 +764,6 @@ const PyCJStudioIDE = {
         const autosaveToggle = document.getElementById('persistence-toggle');
         const editor = document.getElementById('editor');
 
-        // Theme Toggle Persistence Pipeline
         const savedTheme = localStorage.getItem('pycj-theme') || 'dark-theme';
         document.body.className = savedTheme;
         if (themeBtn) {
@@ -765,7 +778,6 @@ const PyCJStudioIDE = {
             });
         }
 
-        // Welcome Modal Onboarding Lifecycle
         const welcomeDismissed = localStorage.getItem('pycj-welcome-dismissed') === 'true';
         if (welcomeModal && !welcomeDismissed) {
             setTimeout(() => welcomeModal.classList.add('active'), 600);
@@ -777,7 +789,6 @@ const PyCJStudioIDE = {
         if (closeWelcomeBtn) closeWelcomeBtn.addEventListener('click', dismissWelcome);
         if (welcomeDismissBtn) welcomeDismissBtn.addEventListener('click', dismissWelcome);
 
-        // Snippets Vault Interaction Overlay
         if (openVaultBtn && vaultModal) {
             openVaultBtn.addEventListener('click', () => vaultModal.classList.add('active'));
         }
@@ -790,7 +801,6 @@ const PyCJStudioIDE = {
             });
         }
 
-        // Clipboard Copy Matrix Engine for Vault Cards
         const vaultCards = document.querySelectorAll('.vault-card');
         const toast = document.getElementById('toast-notification');
         vaultCards.forEach(card => {
@@ -807,26 +817,18 @@ const PyCJStudioIDE = {
             });
         });
 
-        // Simulated Book Downloader Matrix (Generates guide PDF safely client-side)
-        const triggerBookDownload = () => {
-            const mockPdfContent = "%PDF-1.4\n%...\nPyCJ Language Guide Simple Book (Official Reference Guide by Arshman Anil).\nVariables use 'imagine'. Print parameters use 'output()'. Logic uses 'if/elif/else Matrix'. Loops utilize 'for()' and 'repeat'.";
-            const blob = new Blob([mockPdfContent], { type: "application/pdf" });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = "PyCJ_Simple_Book.pdf";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        // Redirects users directly to your official PyCJ documentation domain
+        const triggerDocsRedirect = () => {
+            window.open("https://pycjdocumentation.vercel.app/", "_blank");
         };
-        if (downloadBookBtn) downloadBookBtn.addEventListener('click', triggerBookDownload);
-        if (welcomeDownloadBtn) {
-            welcomeDownloadBtn.addEventListener('click', () => {
-                triggerBookDownload();
+        if (helpBtn) helpBtn.addEventListener('click', triggerDocsRedirect);
+        if (welcomeDocsBtn) {
+            welcomeDocsBtn.addEventListener('click', () => {
+                triggerDocsRedirect();
                 dismissWelcome();
             });
         }
 
-        // Responsive Mobile Tab View Switcher
         if (tabCode && tabConsole && workspace) {
             tabCode.addEventListener('click', () => {
                 tabCode.classList.add('active');
@@ -842,7 +844,6 @@ const PyCJStudioIDE = {
             });
         }
 
-        // Mobile Hamburger Nav Control Menu
         if (menuToggle && controlCluster) {
             menuToggle.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -853,7 +854,6 @@ const PyCJStudioIDE = {
             });
         }
 
-        // Interactive Autosave State Synchronizer
         if (autosaveToggle && editor) {
             autosaveToggle.addEventListener('change', (e) => {
                 localStorage.setItem('pycj-autosave', e.target.checked);
@@ -898,7 +898,70 @@ const PyCJStudioIDE = {
             localStorage.setItem('pycj-version', e.target.value);
         });
 
-        const syntaxExplanationCode = `imagine greeting = "Hello World"\noutput(greeting)`;
+        const syntaxExplanationCode = `# =========================================================
+# Category 1: PyCJ v1 Fundamentals (Variables, Arrays, Loops)
+# =========================================================
+
+# 1. Variables and Data Types
+imagine userName = "Developer"
+imagine scores = [85, 92, 78, 99, 90]
+
+# 2. P-Strings (String Interpolation)
+imagine intro = p"Welcome {userName} to the PyCJ Language Platform!"
+output(intro)
+
+# 3. Professional Array Operations
+scores.add(88)
+imagine highestScore = scores.max()
+imagine lowestScore = scores.min()
+output(p"Scores Array after add: {scores}")
+output(p"Highest score: {highestScore}, Lowest score: {lowestScore}")
+
+# 4. Conditional Control Flow (if, elif, else)
+if highestScore >= 90 {
+    output("Excellent performance detected!")
+} elif highestScore >= 70 {
+    output("Good performance.")
+} else {
+    output("Needs improvement.")
+}
+
+# 5. Iteration Loops (for & repeat)
+output("Running a sequential loop from 1 to 3:")
+for (imagine i = 1, i <= 3, i++) {
+    output(p"Loop index count: {i}")
+}
+
+imagine count = 3
+output("Running a repeat condition loop:")
+repeat count > 0 {
+    output(p"Countdown: {count}")
+    count = count - 1
+}
+
+# =========================================================
+# Category 2: PyCJ v1.1 Advanced Features (Functions & Objects)
+# =========================================================
+# NOTE: Executing below will prompt a version update to v1.1!
+
+# 1. Modular Reusable Functions
+function calculateBonus(baseScore, modifier) {
+    imagine finalScore = baseScore + modifier
+    return finalScore
+}
+
+imagine adjustedScore = calculateBonus(highestScore, 5)
+output(p"Adjusted top score with function bonus: {adjustedScore}")
+
+# 2. Structure Definitions (Custom Objects / Data Maps)
+structure PlayerProfile {
+    name = userName
+    rank = "Elite Tier"
+    active = true
+}
+
+imagine player = PlayerProfile()
+output(p"Player Structure Created -> Name: {player.name}, Rank: {player.rank}")`;
 
         if (editor) {
             const savedAutosave = localStorage.getItem('pycj-autosave') === 'true';
