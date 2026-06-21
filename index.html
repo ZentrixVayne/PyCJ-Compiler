@@ -39,7 +39,7 @@
                         </label>
                     </div>
                     <button id="theme-toggle" class="btn btn-secondary">🌓 Theme</button>
-                    <button id="download-book-btn" class="btn btn-secondary">📘 Get PyCJ Book</button>
+                    <button id="help-btn" class="btn btn-secondary">❓ Help</button>
                     <button id="open-vault-btn" class="btn btn-secondary">🗄️ Snippets Vault</button>
                 </div>
                 
@@ -77,7 +77,7 @@
         </main>
 
         <footer class="app-footer">
-            <p>Made By <a href="https://www.instagram.com/code_with_arshman_anil/" target="_blank" rel="noopener noreferrer">Arshman Anil</a></p>
+            <p>Made By <a href="https://devbyarshman.netlify.app/" target="_blank" rel="noopener noreferrer">Arshman Anil</a></p>
         </footer>
     </div>
 
@@ -100,20 +100,18 @@
     </div>
 
     <div id="welcome-modal" class="vault-overlay">
-        <div class="vault-window welcome-window">
+        <div class="vault-window welcome-window" style="border-top: 4px solid var(--error-color);">
             <div class="vault-header">
-                <h3>🚀 Welcome to PyCJ</h3>
+                <h3 style="color: var(--error-color);">⚠️ Important Warning for New Joiners</h3>
                 <button id="close-welcome-btn" class="vault-close">&times;</button>
             </div>
             <div class="vault-body">
                 <p style="font-size: 14px; line-height: 1.6; color: var(--text-color);">
-                    Welcome to the official environment for writing PyCJ! Since there isn't a built-in tutorial just yet, we highly recommend downloading the <strong>PyCJ Simple Book</strong>.
-                    <br><br>
-                    It is a step-by-step guide to help you master the language, understand variables, set up loops, and print to the console.
+                    Before you start coding in PyCJ, it is highly recommended to visit the official documentation! The syntax is unique and requires a quick read to fully master the environment.
                 </p>
                 <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
-                    <button id="welcome-download-btn" class="btn btn-primary">📘 Download PyCJ Book (PDF)</button>
-                    <button id="welcome-dismiss-btn" class="btn btn-secondary">Maybe Later</button>
+                    <button id="welcome-docs-btn" class="btn btn-primary">🌐 Visit PyCJ Documentation</button>
+                    <button id="welcome-dismiss-btn" class="btn btn-secondary">I understand, let me code</button>
                 </div>
             </div>
         </div>
