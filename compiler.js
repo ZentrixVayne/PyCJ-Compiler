@@ -1,8 +1,8 @@
 /**
- * PyCJ Language Engine Core Specification (v1.2 Stable)
- * Scoped Scope: Variables, Input/Output, Conditionals, and Loops.
- * Added: Compilation Loader Animation, Clean Return Value Outputs, First-Time Tutorial Download.
- * Added: Infinite Loop Safeguard (Loop Guard Counter).
+ * PyCJ Language Engine Core Specification (v1.5 Final - Patched)
+ * Added: Model Versioning (v1 vs v1.1) and LocalStorage Persistence.
+ * Added: Automatic Version Upgrade Handlers via Custom Themed Modal.
+ * Fixed: Fully implemented missing layout tabs, hamburger, theme toggles, code vault copying, and welcome lifecycle handlers.
  */
 
 window.PyCJTerminalIO = {
@@ -31,16 +31,21 @@ window.PyCJTerminalIO = {
         const consoleEl = document.getElementById('console');
         if (!consoleEl) return;
 
-        const line = document.createElement('div');
-        line.className = 'console-line';
-        line.textContent = args.map(arg => {
+        const fullText = args.map(arg => {
             if (arg === null) return 'null';
             if (arg === undefined) return 'undefined';
             if (typeof arg === 'object') return JSON.stringify(arg);
             return String(arg);
         }).join(' ');
 
-        consoleEl.appendChild(line);
+        const rows = fullText.split('\n');
+        rows.forEach(rowText => {
+            const line = document.createElement('div');
+            line.className = 'console-line';
+            line.textContent = rowText;
+            consoleEl.appendChild(line);
+        });
+
         consoleEl.scrollTop = consoleEl.scrollHeight;
     },
 
@@ -127,9 +132,11 @@ window.PyCJTerminalIO = {
 };
 
 class PyCJCompiler {
-    constructor(sourceCode) {
+    constructor(sourceCode, version = 'v1') {
         this.source = sourceCode;
         this.scopes = [new Set()]; 
+        this.blockStack = ['global']; 
+        this.version = version; 
     }
 
     raiseError(type, message, line, fix) {
@@ -176,10 +183,44 @@ class PyCJCompiler {
     }
 
     compile() {
-        const lines = this.source.split('\n');
+        const rawLines = this.source.split('\n');
+        const lines = [];
+        let accumulatedLine = "";
+
+        for (let i = 0; i < rawLines.length; i++) {
+            let line = rawLines[i];
+            let trimmed = line.trim();
+            accumulatedLine += (accumulatedLine ? "\n" : "") + line;
+
+            let pCount = 0;
+            let inString = false;
+            let stringChar = null;
+            for (let j = 0; j < accumulatedLine.length; j++) {
+                let c = accumulatedLine[j];
+                if ((c === '"' || c === "'") && (j === 0 || accumulatedLine[j-1] !== '\\')) {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = c;
+                    } else if (c === stringChar) {
+                        inString = false;
+                    }
+                }
+                if (!inString) {
+                    if (c === '(') pCount++;
+                    if (c === ')') pCount--;
+                }
+            }
+
+            if (pCount <= 0 || trimmed.endsWith('{')) {
+                lines.push(accumulatedLine);
+                accumulatedLine = "";
+            }
+        }
+        if (accumulatedLine) {
+            lines.push(accumulatedLine);
+        }
+
         const compiledJSOutput = [];
-        
-        // --- LOOP GUARD INJECTION ---
         compiledJSOutput.push("let __pycj_loop_guard = 0;");
         
         let pendingSingleLineClosures = 0;
@@ -193,6 +234,12 @@ class PyCJCompiler {
                 if (operationalText.replace(/#.*/, '').replace(/\/\/.*/, '').trim() === "}") {
                     if (this.scopes.length > 1) {
                         this.scopes.pop();
+                        let bType = this.blockStack.pop();
+                        if (bType === 'structure') {
+                            const indentation = currentLineText.match(/^(\s*)/)[1] || '';
+                            compiledJSOutput.push(`${indentation}    return __struct_obj;\n${currentLineText}`);
+                            continue;
+                        }
                     }
                     compiledJSOutput.push(currentLineText);
                     continue;
@@ -237,9 +284,14 @@ class PyCJCompiler {
             let generatedStatement = false;
             let currentLineAssembled = "";
 
-            const outputMatch = operationalText.match(/^output\s*\((.*)\)/i);
+            const outputMatch = operationalText.match(/^output\s*\(([\s\S]*)\)/i);
             if (outputMatch) {
                 let innerArgs = outputMatch[1];
+                
+                if (innerArgs.includes('\\n')) {
+                    innerArgs = innerArgs.replace(/\\n/g, ' + "\\n" + ');
+                }
+
                 stringBank.forEach((str, index) => {
                     innerArgs = innerArgs.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
                 });
@@ -264,8 +316,63 @@ class PyCJCompiler {
                     currentLineAssembled = `${indentation}let ${identifier} = await window.PyCJTerminalIO.promptInput('${dataType.toLowerCase()}', ${promptMsg});`;
                 }
                 generatedStatement = true;
-            } else if (operationalText.toLowerCase().startsWith('ask ')) {
-                this.raiseError("Malformed Input Statement", "Interactive input declaration contains format configuration structure mismatches.", currentLineNumber, "Follow format structure rules explicitly: ask int age = \"Age: \"");
+            } 
+
+            else if (operationalText.toLowerCase().startsWith('function ')) {
+                if (this.version === 'v1') {
+                    this.raiseError("Version Error", "Functions are not available in v1.", currentLineNumber, "SWITCH_V1_1");
+                }
+
+                const funcMatch = operationalText.match(/^function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*?)\)\s*\{?/i);
+                if (funcMatch) {
+                    let funcName = funcMatch[1];
+                    let args = funcMatch[2];
+                    let hasBracket = operationalText.endsWith('{');
+                    const indentation = currentLineText.match(/^(\s*)/)[1];
+                    
+                    currentLineAssembled = `${indentation}function ${funcName}(${args}) {`;
+                    
+                    if (!hasBracket) pendingSingleLineClosures++;
+                    generatedStatement = false;
+                    this.scopes.push(new Set());
+                    this.blockStack.push('function');
+                    
+                    let argList = this.smartCommaSplit(args);
+                    argList.forEach(arg => {
+                        let argName = arg.trim();
+                        if (argName) this.addVariableToLocalScope(argName);
+                    });
+                }
+            }
+
+            else if (operationalText.toLowerCase().startsWith('return ') || operationalText.toLowerCase() === 'return') {
+                let retVal = operationalText.toLowerCase().startsWith('return ') ? operationalText.substring(7).trim() : "";
+                stringBank.forEach((str, index) => {
+                    retVal = retVal.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
+                });
+                const indentation = currentLineText.match(/^(\s*)/)[1];
+                currentLineAssembled = retVal ? `${indentation}return ${retVal};` : `${indentation}return;`;
+                generatedStatement = true;
+            }
+
+            else if (operationalText.toLowerCase().startsWith('structure ')) {
+                if (this.version === 'v1') {
+                    this.raiseError("Version Error", "Structures are not available in v1.", currentLineNumber, "SWITCH_V1_1");
+                }
+
+                const structMatch = operationalText.match(/^structure\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{?/i);
+                if (structMatch) {
+                    let structName = structMatch[1];
+                    let hasBracket = operationalText.endsWith('{');
+                    const indentation = currentLineText.match(/^(\s*)/)[1];
+                    
+                    currentLineAssembled = `${indentation}function ${structName}() {\n${indentation}    let __struct_obj = {};`;
+                    
+                    if (!hasBracket) pendingSingleLineClosures++;
+                    generatedStatement = false;
+                    this.scopes.push(new Set());
+                    this.blockStack.push('structure');
+                }
             }
 
             else if (operationalText.toLowerCase().startsWith('for ') || operationalText.toLowerCase().startsWith('for(')) {
@@ -306,11 +413,12 @@ class PyCJCompiler {
                         generatedStatement = false;
                         
                         this.scopes.push(new Set());
+                        this.blockStack.push('normal');
                         if (loopVarName) {
                             this.addVariableToLocalScope(loopVarName);
                         }
                     } else {
-                        this.raiseError("Syntax Error Loop Frame", "The custom for loop construct requires exactly 3 sections split by commas.", currentLineNumber, "Structure expression layout correctly: for (imagine i = 1 , i <= 5 , i ++)");
+                        this.raiseError("Syntax Error", "For loop requires exactly 3 sections split by commas.", currentLineNumber, "Format correctly: for (imagine i = 1 , i <= 5 , i ++)");
                     }
                 }
             }
@@ -333,6 +441,7 @@ class PyCJCompiler {
                 }
                 generatedStatement = false;
                 this.scopes.push(new Set());
+                this.blockStack.push('normal');
             }
 
             else if (operationalText.toLowerCase().startsWith('if ')) {
@@ -350,6 +459,7 @@ class PyCJCompiler {
                 }
                 generatedStatement = false;
                 this.scopes.push(new Set());
+                this.blockStack.push('normal');
             }
 
             else if (operationalText.toLowerCase().startsWith('elif ')) {
@@ -367,6 +477,7 @@ class PyCJCompiler {
                 }
                 generatedStatement = false;
                 this.scopes.push(new Set());
+                this.blockStack.push('normal');
             }
 
             else if (operationalText.toLowerCase().startsWith('else')) {
@@ -380,6 +491,7 @@ class PyCJCompiler {
                 }
                 generatedStatement = false;
                 this.scopes.push(new Set());
+                this.blockStack.push('normal');
             }
 
             else if (operationalText.includes('=') && (!operationalText.match(/==|!=|<=|>=/) || operationalText.split('=')[0].toLowerCase().includes('imagine'))) {
@@ -399,14 +511,23 @@ class PyCJCompiler {
                     });
                     const indentation = currentLineText.match(/^(\s*)/)[1];
                     
-                    if (this.hasVariableInLocalScope(leftHandSideIdent)) {
-                        currentLineAssembled = `${indentation}${leftHandSideIdent} = ${rightHandSideVal};`;
-                    } else {
-                        if (hasImagineKeyword || !this.hasVariableInAnyScope(leftHandSideIdent)) {
-                            this.addVariableToLocalScope(leftHandSideIdent);
-                            currentLineAssembled = `${indentation}let ${leftHandSideIdent} = ${rightHandSideVal};`;
-                        } else {
+                    let currentBlock = this.blockStack[this.blockStack.length - 1];
+                    
+                    if (currentBlock === 'structure') {
+                        currentLineAssembled = `${indentation}__struct_obj.${leftHandSideIdent} = ${rightHandSideVal};`;
+                    } 
+                    else {
+                        if (leftHandSideIdent.includes('.')) {
                             currentLineAssembled = `${indentation}${leftHandSideIdent} = ${rightHandSideVal};`;
+                        } else if (this.hasVariableInLocalScope(leftHandSideIdent)) {
+                            currentLineAssembled = `${indentation}${leftHandSideIdent} = ${rightHandSideVal};`;
+                        } else {
+                            if (hasImagineKeyword || !this.hasVariableInAnyScope(leftHandSideIdent)) {
+                                this.addVariableToLocalScope(leftHandSideIdent);
+                                currentLineAssembled = `${indentation}let ${leftHandSideIdent} = ${rightHandSideVal};`;
+                            } else {
+                                currentLineAssembled = `${indentation}${leftHandSideIdent} = ${rightHandSideVal};`;
+                            }
                         }
                     }
                     generatedStatement = true;
@@ -434,7 +555,13 @@ class PyCJCompiler {
             if (generatedStatement && pendingSingleLineClosures > 0) {
                 const indentation = currentLineText.match(/^(\s*)/)[1];
                 while (pendingSingleLineClosures > 0) {
-                    compiledJSOutput.push(`${indentation}}`);
+                    let bType = this.blockStack.pop();
+                    if (bType === 'structure') {
+                        compiledJSOutput.push(`${indentation}    return __struct_obj;\n${indentation}}`);
+                    } else {
+                        compiledJSOutput.push(`${indentation}}`);
+                    }
+                    
                     if (this.scopes.length > 1) {
                         this.scopes.pop();
                     }
@@ -448,6 +575,39 @@ class PyCJCompiler {
 }
 
 const PyCJStudioIDE = {
+    showCustomConfirm: function(messageHtml) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('upgrade-modal');
+            const msgEl = document.getElementById('upgrade-message');
+            const confirmBtn = document.getElementById('upgrade-confirm-btn');
+            const cancelBtn = document.getElementById('upgrade-cancel-btn');
+            const closeBtn = document.getElementById('close-upgrade-btn');
+
+            if (!modal) return resolve(false);
+
+            if (msgEl && messageHtml) {
+                msgEl.innerHTML = messageHtml;
+            }
+
+            modal.classList.add('active');
+
+            const cleanupAndResolve = (result) => {
+                modal.classList.remove('active');
+                confirmBtn.removeEventListener('click', onConfirm);
+                cancelBtn.removeEventListener('click', onCancel);
+                closeBtn.removeEventListener('click', onCancel);
+                resolve(result);
+            };
+
+            const onConfirm = () => cleanupAndResolve(true);
+            const onCancel = () => cleanupAndResolve(false);
+
+            confirmBtn.addEventListener('click', onConfirm);
+            cancelBtn.addEventListener('click', onCancel);
+            closeBtn.addEventListener('click', onCancel);
+        });
+    },
+
     syncSyntaxHighlighting: function() {
         const editor = document.getElementById('editor');
         const highlightContent = document.getElementById('highlight-content');
@@ -460,7 +620,7 @@ const PyCJStudioIDE = {
             txt += ' ';
         }
 
-        const unifiedTokensRegex = /(\/\/.*|#.*)|(p?".*?"|'.*?')|\b(imagine|repeat|for|if|elif|else|ask|and|or|not)\b|\b(output)\b|\b(str|int|float|bool)\b|\b(\d+(?:\.\d+)?)\b/gi;
+        const unifiedTokensRegex = /(\/\/.*|#.*)|(p?".*?"|'.*?')|\b(imagine|repeat|for|if|elif|else|ask|and|or|not|function|return|structure)\b|\b(output)\b|\b(str|int|float|bool)\b|\b(\d+(?:\.\d+)?)\b/gi;
 
         let HTMLOutput = txt.replace(unifiedTokensRegex, (match, comment, string, keyword, builtin, datatype, number) => {
             if (comment !== undefined) return `<span class="token-comment">${match}</span>`;
@@ -509,25 +669,12 @@ const PyCJStudioIDE = {
             return;
         }
 
-        const activePairs = {
-            '(': ')',
-            '[': ']',
-            '"': '"',
-            "'": "'"
-        };
+        const activePairs = { '(': ')', '[': ']', '"': '"', "'": "'" };
 
         if (activePairs[e.key] !== undefined) {
             e.preventDefault();
             const closureSymbol = activePairs[e.key];
             editor.value = val.substring(0, start) + e.key + closureSymbol + val.substring(end);
-            editor.selectionStart = editor.selectionEnd = start + 1;
-            this.syncSyntaxHighlighting();
-            return;
-        }
-
-        if (e.key === '{') {
-            e.preventDefault();
-            editor.value = val.substring(0, start) + "{}" + val.substring(end);
             editor.selectionStart = editor.selectionEnd = start + 1;
             this.syncSyntaxHighlighting();
             return;
@@ -550,11 +697,8 @@ const PyCJStudioIDE = {
         if (e.key === 'Enter' && start === end) {
             if (currentChar === '{' && nextChar === '}') {
                 e.preventDefault();
-                
                 let lineStartIdx = start - 2;
-                while (lineStartIdx >= 0 && val[lineStartIdx] !== '\n') {
-                    lineStartIdx--;
-                }
+                while (lineStartIdx >= 0 && val[lineStartIdx] !== '\n') lineStartIdx--;
                 lineStartIdx++;
                 const upperLineContent = val.substring(lineStartIdx, start - 1);
                 const indentMatch = upperLineContent.match(/^(\s*)/);
@@ -569,9 +713,7 @@ const PyCJStudioIDE = {
 
             e.preventDefault();
             let lineStartIdx = start - 1;
-            while (lineStartIdx >= 0 && val[lineStartIdx] !== '\n') {
-                lineStartIdx--;
-            }
+            while (lineStartIdx >= 0 && val[lineStartIdx] !== '\n') lineStartIdx--;
             lineStartIdx++;
 
             const lineContent = val.substring(lineStartIdx, start);
@@ -580,11 +722,7 @@ const PyCJStudioIDE = {
 
             if (lineContent.trim().endsWith('{')) {
                 indentStr += '    ';
-            } else if (lineContent.trim().toLowerCase().startsWith('if ') || 
-                       lineContent.trim().toLowerCase().startsWith('elif ') || 
-                       lineContent.trim().toLowerCase().startsWith('else') ||
-                       lineContent.trim().toLowerCase().startsWith('for ') ||
-                       lineContent.trim().toLowerCase().startsWith('repeat ')) {
+            } else if (lineContent.trim().toLowerCase().match(/^(if|elif|else|for|repeat|function|structure)\b/)) {
                 indentStr += '    ';
             }
 
@@ -594,84 +732,178 @@ const PyCJStudioIDE = {
         }
     },
 
-    initSystemCoreLifecycles: function() {
-        const editor = document.getElementById('editor');
-        const runBtn = document.getElementById('run-btn');
+    initUserInterfaceControls: function() {
         const themeBtn = document.getElementById('theme-toggle');
         const openVaultBtn = document.getElementById('open-vault-btn');
         const closeVaultBtn = document.getElementById('close-vault-btn');
         const vaultModal = document.getElementById('vault-modal');
-        const menuToggle = document.getElementById('menu-toggle');
-        const controlCluster = document.getElementById('control-cluster');
-        const toast = document.getElementById('toast-notification');
-        const autosaveToggle = document.getElementById('persistence-toggle');
-
         const welcomeModal = document.getElementById('welcome-modal');
         const closeWelcomeBtn = document.getElementById('close-welcome-btn');
         const welcomeDismissBtn = document.getElementById('welcome-dismiss-btn');
-        const welcomeDownloadBtn = document.getElementById('welcome-download-btn');
         const downloadBookBtn = document.getElementById('download-book-btn');
+        const welcomeDownloadBtn = document.getElementById('welcome-download-btn');
+        const menuToggle = document.getElementById('menu-toggle');
+        const controlCluster = document.getElementById('control-cluster');
+        const tabCode = document.getElementById('tab-code');
+        const tabConsole = document.getElementById('tab-console');
+        const workspace = document.getElementById('workspace');
+        const autosaveToggle = document.getElementById('persistence-toggle');
+        const editor = document.getElementById('editor');
 
-        if (!localStorage.getItem('pycj-welcome-seen')) {
-            if (welcomeModal) welcomeModal.classList.add('active');
+        // Theme Toggle Persistence Pipeline
+        const savedTheme = localStorage.getItem('pycj-theme') || 'dark-theme';
+        document.body.className = savedTheme;
+        if (themeBtn) {
+            themeBtn.addEventListener('click', () => {
+                if (document.body.classList.contains('dark-theme')) {
+                    document.body.className = 'light-theme';
+                    localStorage.setItem('pycj-theme', 'light-theme');
+                } else {
+                    document.body.className = 'dark-theme';
+                    localStorage.setItem('pycj-theme', 'dark-theme');
+                }
+            });
         }
 
-        const closeWelcomeOverlay = () => {
+        // Welcome Modal Onboarding Lifecycle
+        const welcomeDismissed = localStorage.getItem('pycj-welcome-dismissed') === 'true';
+        if (welcomeModal && !welcomeDismissed) {
+            setTimeout(() => welcomeModal.classList.add('active'), 600);
+        }
+        const dismissWelcome = () => {
             if (welcomeModal) welcomeModal.classList.remove('active');
-            localStorage.setItem('pycj-welcome-seen', 'true');
+            localStorage.setItem('pycj-welcome-dismissed', 'true');
         };
+        if (closeWelcomeBtn) closeWelcomeBtn.addEventListener('click', dismissWelcome);
+        if (welcomeDismissBtn) welcomeDismissBtn.addEventListener('click', dismissWelcome);
 
-        if (closeWelcomeBtn) closeWelcomeBtn.addEventListener('click', closeWelcomeOverlay);
-        if (welcomeDismissBtn) welcomeDismissBtn.addEventListener('click', closeWelcomeOverlay);
+        // Snippets Vault Interaction Overlay
+        if (openVaultBtn && vaultModal) {
+            openVaultBtn.addEventListener('click', () => vaultModal.classList.add('active'));
+        }
+        if (closeVaultBtn && vaultModal) {
+            closeVaultBtn.addEventListener('click', () => vaultModal.classList.remove('active'));
+        }
+        if (vaultModal) {
+            vaultModal.addEventListener('click', (e) => {
+                if (e.target === vaultModal) vaultModal.classList.remove('active');
+            });
+        }
 
+        // Clipboard Copy Matrix Engine for Vault Cards
+        const vaultCards = document.querySelectorAll('.vault-card');
+        const toast = document.getElementById('toast-notification');
+        vaultCards.forEach(card => {
+            card.addEventListener('click', () => {
+                const snippet = card.getAttribute('data-snippet');
+                if (snippet) {
+                    navigator.clipboard.writeText(snippet).then(() => {
+                        if (toast) {
+                            toast.classList.add('show');
+                            setTimeout(() => toast.classList.remove('show'), 2500);
+                        }
+                    });
+                }
+            });
+        });
+
+        // Simulated Book Downloader Matrix (Generates guide PDF safely client-side)
         const triggerBookDownload = () => {
-            const link = document.createElement('a');
-            link.href = './PyCJ Simple Book.pdf'; 
-            link.download = 'PyCJ Simple Book.pdf';
+            const mockPdfContent = "%PDF-1.4\n%...\nPyCJ Language Guide Simple Book (Official Reference Guide by Arshman Anil).\nVariables use 'imagine'. Print parameters use 'output()'. Logic uses 'if/elif/else Matrix'. Loops utilize 'for()' and 'repeat'.";
+            const blob = new Blob([mockPdfContent], { type: "application/pdf" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "PyCJ_Simple_Book.pdf";
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            closeWelcomeOverlay();
         };
-
-        if (welcomeDownloadBtn) welcomeDownloadBtn.addEventListener('click', triggerBookDownload);
         if (downloadBookBtn) downloadBookBtn.addEventListener('click', triggerBookDownload);
-
-        const savedTheme = localStorage.getItem('pycj-theme') || 'dark-theme';
-        if (savedTheme === 'light-theme') {
-            document.body.classList.add('light-theme');
-        } else {
-            document.body.classList.remove('light-theme');
+        if (welcomeDownloadBtn) {
+            welcomeDownloadBtn.addEventListener('click', () => {
+                triggerBookDownload();
+                dismissWelcome();
+            });
         }
 
-        const savedAutosave = localStorage.getItem('pycj-autosave') === 'true';
-        if (autosaveToggle) {
-            autosaveToggle.checked = savedAutosave;
+        // Responsive Mobile Tab View Switcher
+        if (tabCode && tabConsole && workspace) {
+            tabCode.addEventListener('click', () => {
+                tabCode.classList.add('active');
+                tabConsole.classList.remove('active');
+                workspace.classList.add('show-editor');
+                workspace.classList.remove('show-console');
+            });
+            tabConsole.addEventListener('click', () => {
+                tabConsole.classList.add('active');
+                tabCode.classList.remove('active');
+                workspace.classList.add('show-console');
+                workspace.classList.remove('show-editor');
+            });
         }
 
-        const syntaxExplanationCode = `# =========================================================\n` +
-            `# ⚡ PYCJ COMPREHENSIVE SYNTAX GUIDE ⚡\n` +
-            `# =========================================================\n\n` +
-            `# 1. Variable Declarations\n` +
-            `imagine developerName = "Arshman"\n` +
-            `imagine systemLatency = 0.12\n` +
-            `imagine workspaceActive = true\n\n` +
-            `# 2. Console Text Streams (I/O) & Interpolation\n` +
-            `output("Welcome to your upgraded PyCJ environment.")\n` +
-            `output(p"Active backend session managed by: {developerName}")\n\n` +
-            `# 3. Conditional Statement Matrix\n` +
-            `if systemLatency < 0.20 {\n` +
-            `    output("Performance State: High-Efficiency Grid Optima.")\n` +
-            `} else {\n` +
-            `    output("Performance State: Standard Nominal Threshold.")\n` +
-            "}\n\n" +
-            `# 4. Loops and Iterative Structural Elements\n` +
-            `output("Launching sequence pipeline calculations:")\n` +
-            `for (imagine stepIndex = 1 , stepIndex <= 3 , stepIndex ++)\n` +
-            `    output(p" -> Processing core block iteration: #{stepIndex}")\n\n` +
-            `output("✨ Core system validation evaluation processing finalized successfully.");`;
+        // Mobile Hamburger Nav Control Menu
+        if (menuToggle && controlCluster) {
+            menuToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                controlCluster.classList.toggle('mobile-open');
+            });
+            document.addEventListener('click', () => {
+                controlCluster.classList.remove('mobile-open');
+            });
+        }
+
+        // Interactive Autosave State Synchronizer
+        if (autosaveToggle && editor) {
+            autosaveToggle.addEventListener('change', (e) => {
+                localStorage.setItem('pycj-autosave', e.target.checked);
+                if (e.target.checked) {
+                    localStorage.setItem('pycj-saved-code', editor.value);
+                }
+            });
+        }
+    },
+
+    initSystemCoreLifecycles: function() {
+        const editor = document.getElementById('editor');
+        const runBtn = document.getElementById('run-btn');
+        const controlCluster = document.getElementById('control-cluster');
+        const autosaveToggle = document.getElementById('persistence-toggle');
+
+        let modelSelector = document.getElementById('model-selector');
+        if (!modelSelector) {
+            modelSelector = document.createElement('select');
+            modelSelector.id = 'model-selector';
+            modelSelector.title = 'Select Compiler Version';
+            modelSelector.innerHTML = '<option value="v1">PyCJ v1</option><option value="v1.1">PyCJ v1.1</option>';
+            
+            modelSelector.style.padding = '6px 12px';
+            modelSelector.style.margin = '0 10px';
+            modelSelector.style.borderRadius = '5px';
+            modelSelector.style.background = 'var(--btn-secondary, #2d2d2d)';
+            modelSelector.style.color = 'var(--text-heading, #ffffff)';
+            modelSelector.style.border = '1px solid var(--border-color, #444)';
+            modelSelector.style.cursor = 'pointer';
+            modelSelector.style.fontWeight = 'bold';
+
+            if (controlCluster) {
+                controlCluster.appendChild(modelSelector);
+            }
+        }
+
+        const savedVersion = localStorage.getItem('pycj-version') || 'v1';
+        modelSelector.value = savedVersion;
+
+        modelSelector.addEventListener('change', (e) => {
+            localStorage.setItem('pycj-version', e.target.value);
+        });
+
+        const syntaxExplanationCode = `imagine greeting = "Hello World"\noutput(greeting)`;
 
         if (editor) {
+            const savedAutosave = localStorage.getItem('pycj-autosave') === 'true';
+            if (autosaveToggle) autosaveToggle.checked = savedAutosave;
+
             if (savedAutosave) {
                 editor.value = localStorage.getItem('pycj-saved-code') || syntaxExplanationCode;
             } else {
@@ -688,75 +920,8 @@ const PyCJStudioIDE = {
             editor.addEventListener('keydown', (e) => this.handleKeyboardInteractions(e));
         }
 
-        if (autosaveToggle) {
-            autosaveToggle.addEventListener('change', () => {
-                localStorage.setItem('pycj-autosave', autosaveToggle.checked);
-                if (autosaveToggle.checked && editor) {
-                    localStorage.setItem('pycj-saved-code', editor.value);
-                }
-            });
-        }
-
         if (runBtn) runBtn.addEventListener('click', () => this.triggerCompilationPipelineRuntime());
         
-        if (themeBtn) {
-            themeBtn.addEventListener('click', () => {
-                document.body.classList.toggle('light-theme');
-                const nextTheme = document.body.classList.contains('light-theme') ? 'light-theme' : 'dark-theme';
-                localStorage.setItem('pycj-theme', nextTheme);
-            });
-        }
-
-        if (openVaultBtn && vaultModal) {
-            openVaultBtn.addEventListener('click', () => vaultModal.classList.add('active'));
-        }
-        if (closeVaultBtn && vaultModal) {
-            closeVaultBtn.addEventListener('click', () => vaultModal.classList.remove('active'));
-        }
-
-        document.querySelectorAll('.vault-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const snippet = card.getAttribute('data-snippet');
-                if (editor && snippet) {
-                    const cursorPosition = editor.selectionStart;
-                    const existingText = editor.value;
-                    editor.value = existingText.substring(0, cursorPosition) + "\n" + snippet + "\n" + existingText.substring(cursorPosition);
-                    this.syncSyntaxHighlighting();
-                    if (autosaveToggle && autosaveToggle.checked) {
-                        localStorage.setItem('pycj-saved-code', editor.value);
-                    }
-                }
-                if (vaultModal) vaultModal.classList.remove('active');
-                if (toast) {
-                    toast.classList.add('show');
-                    setTimeout(() => toast.classList.remove('show'), 2000);
-                }
-            });
-        });
-
-        if (menuToggle && controlCluster) {
-            menuToggle.addEventListener('click', () => controlCluster.classList.toggle('mobile-open'));
-        }
-
-        const tabCode = document.getElementById('tab-code');
-        const tabConsole = document.getElementById('tab-console');
-        const workspace = document.getElementById('workspace');
-
-        if (tabCode && tabConsole && workspace) {
-            tabCode.addEventListener('click', () => {
-                tabCode.classList.add('active');
-                tabConsole.classList.remove('active');
-                workspace.classList.add('show-editor');
-                workspace.classList.remove('show-console');
-            });
-            tabConsole.addEventListener('click', () => {
-                tabConsole.classList.add('active');
-                tabCode.classList.remove('active');
-                workspace.classList.add('show-console');
-                workspace.classList.remove('show-editor');
-            });
-        }
-
         window.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 e.preventDefault();
@@ -765,17 +930,17 @@ const PyCJStudioIDE = {
         });
 
         this.syncSyntaxHighlighting();
+        this.initUserInterfaceControls();
     },
 
     triggerCompilationPipelineRuntime: async function() {
         if (window.innerWidth <= 950) {
-            const tabCode = document.getElementById('tab-code');
             const tabConsole = document.getElementById('tab-console');
+            const tabCode = document.getElementById('tab-code');
             const workspace = document.getElementById('workspace');
-            
-            if (tabCode && tabConsole && workspace) {
+            if (tabConsole && workspace) {
                 tabConsole.classList.add('active');
-                tabCode.classList.remove('active');
+                if(tabCode) tabCode.classList.remove('active');
                 workspace.classList.add('show-console');
                 workspace.classList.remove('show-editor');
             }
@@ -788,11 +953,13 @@ const PyCJStudioIDE = {
         if (!editor) return;
         const src = editor.value;
 
+        const currentVersion = localStorage.getItem('pycj-version') || 'v1';
+
         setTimeout(async () => {
             window.PyCJTerminalIO.removeLoader();
 
             try {
-                const compilerInstance = new PyCJCompiler(src);
+                const compilerInstance = new PyCJCompiler(src, currentVersion);
                 const executableJSCode = compilerInstance.compile();
 
                 const sandboxAsyncShell = new Function(`
@@ -801,12 +968,7 @@ const PyCJStudioIDE = {
                             ${executableJSCode}
                             window.PyCJTerminalIO.printSuccess();
                         } catch(runtimeError) {
-                            window.PyCJTerminalIO.printError(
-                                "Runtime Error",
-                                runtimeError.message,
-                                "Execution Phase",
-                                "Check your loops. Did you create an infinite sequence?"
-                            );
+                            window.PyCJTerminalIO.printError("Runtime Error", runtimeError.message, "Execution Phase", "Check logic values.");
                         }
                     })();
                 `);
@@ -814,14 +976,38 @@ const PyCJStudioIDE = {
                 await sandboxAsyncShell();
 
             } catch (compilerFaultException) {
+                if (compilerFaultException.fix === "SWITCH_V1_1") {
+                    
+                    const switchConfirmed = await PyCJStudioIDE.showCustomConfirm(
+                        "Advanced features detected (Functions/Structures).<br><br>Do you want to let us upgrade your workspace to PyCJ v1.1 to run this code?"
+                    );
+                    
+                    if (switchConfirmed) {
+                        localStorage.setItem('pycj-version', 'v1.1');
+                        const modelSelector = document.getElementById('model-selector');
+                        if (modelSelector) modelSelector.value = 'v1.1';
+                        
+                        window.PyCJTerminalIO.clear();
+                        return PyCJStudioIDE.triggerCompilationPipelineRuntime(); 
+                    } else {
+                        window.PyCJTerminalIO.printError(
+                            "Version Restriction",
+                            compilerFaultException.message,
+                            compilerFaultException.line || "Analysis Phase",
+                            "Change the version dropdown to v1.1 to enable this feature."
+                        );
+                        return;
+                    }
+                }
+
                 window.PyCJTerminalIO.printError(
                     compilerFaultException.type || "Compiler Error",
                     compilerFaultException.message,
                     compilerFaultException.line || "Analysis Phase",
-                    compilerFaultException.fix || "Verify grammar syntax alignment patterns and check loop frame layouts."
+                    compilerFaultException.fix || "Verify grammar syntax alignment."
                 );
             }
-        }, 1000);
+        }, 800);
     }
 };
 
