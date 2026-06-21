@@ -77,8 +77,26 @@
         </main>
 
         <footer class="app-footer">
-            <p>Made By <a href="https://devbyarshman.netlify.app/" target="_blank" rel="noopener noreferrer">Arshman Anil</a></p>
+            <p>Made By <a href="https://www.instagram.com/code_with_arshman_anil/" target="_blank" rel="noopener noreferrer">Arshman Anil</a></p>
         </footer>
+    </div>
+
+    <div id="upgrade-modal" class="vault-overlay">
+        <div class="vault-window welcome-window">
+            <div class="vault-header">
+                <h3>⚠️ Upgrade Required</h3>
+                <button id="close-upgrade-btn" class="vault-close">&times;</button>
+            </div>
+            <div class="vault-body">
+                <p id="upgrade-message" style="font-size: 14px; line-height: 1.6; color: var(--text-color);">
+                    Advanced features detected. Do you want to upgrade your workspace?
+                </p>
+                <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button id="upgrade-confirm-btn" class="btn btn-primary">🚀 Upgrade to v1.1</button>
+                    <button id="upgrade-cancel-btn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="welcome-modal" class="vault-overlay">
