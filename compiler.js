@@ -1,13 +1,11 @@
 /**
- * PyCJ Language Engine Core Specification (v1.6.2 - Conditionals & Loops Equality Fix)
- * Added: Model Versioning (v1 vs v1.1) and LocalStorage Persistence.
- * Added: Automatic Version Upgrade Handlers via Custom Themed Modal.
- * Fixed: Fully implemented missing layout tabs, hamburger, theme toggles, code vault copying, and welcome lifecycle handlers.
- * Fixed: Auto-closing mapping for curly braces {}.
- * Added: Professional Array Manipulation (add, remove, max, min) across global scope, structures, and p-strings.
- * Fixed: Support for both 'str' and 'string' keywords inside the 'ask' construct.
- * Fixed: Global scope return handling ensuring success box lifecycle renders gracefully with code data.
- * FIXED: Auto-translating single '=' to '===' inside conditionals (if, elif, repeat, for-conditions) to prevent assignment override.
+ * PyCJ Language Engine Core Specification (v1.8.5 - Complete Syntax Convergence)
+ * Added: Empty initial slot validation for loops e.g., for ( , i <= 50 , i ++)
+ * Added: True/False capitalized casing support during code parsing
+ * Added: Integer Floor Division (//) translation layer mapped to Math.floor()
+ * Added: Multi-argument resolution support inside .add(...) method configurations
+ * FIXED: Advanced parser support for multi-line block comments
+ * FIXED: Hardened grammar interceptor ensuring native JS blocks throw clear PyCJ errors
  */
 
 window.PyCJTerminalIO = {
@@ -39,6 +37,7 @@ window.PyCJTerminalIO = {
         const fullText = args.map(arg => {
             if (arg === null) return 'null';
             if (arg === undefined) return 'undefined';
+            if (Array.isArray(arg)) return '[' + arg.join(', ') + ']';
             if (typeof arg === 'object') return JSON.stringify(arg);
             return String(arg);
         }).join(' ');
@@ -187,8 +186,73 @@ class PyCJCompiler {
         return parts;
     }
 
+    validateStructuralIntegrity(rawLines) {
+        let braceTracker = [];
+        let inBlockComment = false;
+        
+        for (let i = 0; i < rawLines.length; i++) {
+            let lineText = rawLines[i].trim();
+            
+            if (lineText.includes('/*')) inBlockComment = true;
+            if (inBlockComment) {
+                if (lineText.includes('*/')) inBlockComment = false;
+                continue;
+            }
+
+            if (lineText.startsWith('#') || lineText.startsWith('//') || lineText === '') {
+                continue;
+            }
+
+            lineText = lineText.replace(/([pP]?)(["'])(?:\\.|[^\\])*?\2/g, '');
+
+            for (let charIdx = 0; charIdx < lineText.length; charIdx++) {
+                let char = lineText[charIdx];
+                if (char === '{') {
+                    braceTracker.push({ lineNum: i + 1, originalText: rawLines[i].trim() });
+                } else if (char === '}') {
+                    if (braceTracker.length === 0) {
+                        this.raiseError(
+                            "Syntax Scope Error", 
+                            "Unexpected closing brace '}' without a matching structural open block condition.", 
+                            i + 1, 
+                            "Remove the erroneous closing '}' brace or verify its corresponding logical container."
+                        );
+                    }
+                    braceTracker.pop();
+                }
+            }
+        }
+
+        if (braceTracker.length > 0) {
+            let missingClosureBlock = braceTracker.pop();
+            this.raiseError(
+                "Missing Structural Closure", 
+                `The block initialized here remains unclosed at compilation EOF.`, 
+                missingClosureBlock.lineNum, 
+                `Append a closing curly brace '}' below this block alignment to preserve scope symmetry.`
+            );
+        }
+    }
+
     compile() {
-        const rawLines = this.source.split('\n');
+        let workingSource = this.source;
+        workingSource = workingSource.replace(/([^/\s\d]+|[\d.]+)\s*\/\/\s*([^/\s\d]+|[\d.]+)/g, 'Math.floor($1 / $2)');
+
+        if (workingSource.includes('/*')) {
+            let openIdx = workingSource.indexOf('/*');
+            while (openIdx !== -1) {
+                let closeIdx = workingSource.indexOf('*/', openIdx);
+                if (closeIdx === -1) break;
+                let segments = workingSource.substring(openIdx, closeIdx + 2).split('\n');
+                let emptyLines = segments.map(() => "").join('\n');
+                workingSource = workingSource.substring(0, openIdx) + emptyLines + workingSource.substring(closeIdx + 2);
+                openIdx = workingSource.indexOf('/*');
+            }
+        }
+
+        const rawLines = workingSource.split('\n');
+        this.validateStructuralIntegrity(rawLines);
+
         const lines = [];
         let accumulatedLine = "";
 
@@ -267,12 +331,22 @@ class PyCJCompiler {
             });
             operationalText = currentLineText.trim();
 
-            // Core Logic Translations
+            if (operationalText.match(/\bconsole\s*\.\s*[a-zA-Z_]/i) || operationalText.match(/\bdocument\s*\.\s*[a-zA-Z_]/i) || operationalText.match(/\bwindow\s*\.\s*[a-zA-Z_]/i)) {
+                this.raiseError(
+                    "Invalid JavaScript Syntax",
+                    `Native JavaScript API call context discovered ("${operationalText}"). PyCJ runs on its own standalone grammar rules.`,
+                    currentLineNumber,
+                    "This environment is PyCJ, not JavaScript! Use 'output(...)' to print data to the terminal console safely."
+                );
+            }
+
+            currentLineText = currentLineText.replace(/\bTrue\b/g, 'true');
+            currentLineText = currentLineText.replace(/\bFalse\b/g, 'false');
+
             currentLineText = currentLineText.replace(/\band\b/gi, '&&');
             currentLineText = currentLineText.replace(/\bor\b/gi, '||');
             currentLineText = currentLineText.replace(/\bnot\b/gi, '!');
 
-            // PyCJ Professional Array Method Translations
             currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.max\([^)]*\)/g, 'Math.max(...$1)');
             currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.min\([^)]*\)/g, 'Math.min(...$1)');
             currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.add\(([^)]+)\)/g, '$1.push($2)');
@@ -301,8 +375,36 @@ class PyCJCompiler {
             let generatedStatement = false;
             let currentLineAssembled = "";
 
-            const outputMatch = operationalText.match(/^output\s*\(([\s\S]*)\)/i);
-            if (outputMatch) {
+            if (operationalText === "break") {
+                this.raiseError("Invalid JavaScript Syntax", "Raw JavaScript 'break' keyword detected.", currentLineNumber, "Did you mean to use the custom structural command 'stop' instead?");
+            }
+            else if (operationalText === "continue") {
+                this.raiseError("Invalid JavaScript Syntax", "Raw JavaScript 'continue' keyword detected.", currentLineNumber, "Did you mean to use the custom structural command 'move' instead?");
+            }
+            else if (operationalText === "pass") {
+                const indentation = currentLineText.match(/^(\s*)/)[1] || '';
+                currentLineAssembled = `${indentation}// pass statement`;
+                generatedStatement = true;
+            }
+            else if (operationalText === "stop") {
+                const indentation = currentLineText.match(/^(\s*)/)[1] || '';
+                if (!this.blockStack.includes('normal')) {
+                    this.raiseError("Scope Error", "The 'stop' command can only be called from inside an iterative container loop.", currentLineNumber, "Embed inside a 'for' or 'repeat' conditional statement.");
+                }
+                currentLineAssembled = `${indentation}break;`;
+                generatedStatement = true;
+            }
+            else if (operationalText === "move") {
+                const indentation = currentLineText.match(/^(\s*)/)[1] || '';
+                if (!this.blockStack.includes('normal')) {
+                    this.raiseError("Scope Error", "The 'move' command can only be called from inside an iterative container loop.", currentLineNumber, "Embed inside a 'for' or 'repeat' conditional statement.");
+                }
+                currentLineAssembled = `${indentation}continue;`;
+                generatedStatement = true;
+            }
+
+            else if (operationalText.match(/^output\s*\(([\s\S]*)\)/i)) {
+                const outputMatch = operationalText.match(/^output\s*\(([\s\S]*)\)/i);
                 let innerArgs = outputMatch[1];
                 
                 if (innerArgs.includes('\\n')) {
@@ -317,12 +419,12 @@ class PyCJCompiler {
                 generatedStatement = true;
             }
 
-            // Fixed pattern match to parse both 'str' and 'string' options cleanly
             else if (operationalText.match(/^ask\s+(str|string|int|float|bool)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*)/i)) {
                 const askMatch = operationalText.match(/^ask\s+(str|string|int|float|bool)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*)/i);
                 let [_, dataType, identifier, promptMsg] = askMatch;
                 
                 if (dataType.toLowerCase() === 'string') dataType = 'str';
+                if (!promptMsg || promptMsg.trim() === '""' || promptMsg.trim() === "''") promptMsg = '""';
                 
                 stringBank.forEach((str, index) => {
                     promptMsg = promptMsg.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
@@ -411,8 +513,7 @@ class PyCJCompiler {
                         let condition = loopParts[1].trim();
                         let increment = loopParts[2].trim();
 
-                        // Equality Translation Patch for For-Loop condition
-                        condition = condition.replace(/(?<![<>=!])=(?![=])/g, "===");
+                        condition = condition.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                         let loopVarName = "";
                         if (initialization.toLowerCase().startsWith('imagine ')) {
@@ -422,10 +523,12 @@ class PyCJCompiler {
                                 loopVarName = nameMatch[1];
                             }
                             initialization = 'let ' + rawVarExpr;
+                        } else if (initialization === "") {
+                            initialization = "";
                         }
 
                         stringBank.forEach((str, index) => {
-                            initialization = initialization.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
+                            if (initialization) initialization = initialization.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
                             condition = condition.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
                             increment = increment.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
                         });
@@ -435,16 +538,12 @@ class PyCJCompiler {
                         
                         currentLineAssembled = `${indentation}for (${initialization}; ${condition}; ${increment}) { if (++__pycj_loop_guard > 1000) throw new Error("Infinite limit reached! Process halted to prevent crash.");`;
                         
-                        if (!hasBracket) {
-                            pendingSingleLineClosures++;
-                        }
+                        if (!hasBracket) pendingSingleLineClosures++;
                         generatedStatement = false;
                         
                         this.scopes.push(new Set());
                         this.blockStack.push('normal');
-                        if (loopVarName) {
-                            this.addVariableToLocalScope(loopVarName);
-                        }
+                        if (loopVarName) this.addVariableToLocalScope(loopVarName);
                     } else {
                         this.raiseError("Syntax Error", "For loop requires exactly 3 sections split by commas.", currentLineNumber, "Format correctly: for (imagine i = 1 , i <= 5 , i ++)");
                     }
@@ -454,12 +553,9 @@ class PyCJCompiler {
             else if (operationalText.toLowerCase().startsWith('repeat ')) {
                 let loopCond = operationalText.substring(7).trim();
                 let hasBracket = loopCond.endsWith('{');
-                if (hasBracket) {
-                    loopCond = loopCond.slice(0, -1).trim();
-                }
+                if (hasBracket) loopCond = loopCond.slice(0, -1).trim();
 
-                // Equality Translation Patch for Repeat Loop
-                loopCond = loopCond.replace(/(?<![<>=!])=(?![=])/g, "===");
+                loopCond = loopCond.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                 stringBank.forEach((str, index) => {
                     loopCond = loopCond.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
@@ -468,9 +564,7 @@ class PyCJCompiler {
                 
                 currentLineAssembled = `${indentation}while (${loopCond}) { if (++__pycj_loop_guard > 1000) throw new Error("Infinite limit reached! Process halted to prevent crash.");`;
                 
-                if (!hasBracket) {
-                    pendingSingleLineClosures++;
-                }
+                if (!hasBracket) pendingSingleLineClosures++;
                 generatedStatement = false;
                 this.scopes.push(new Set());
                 this.blockStack.push('normal');
@@ -481,8 +575,7 @@ class PyCJCompiler {
                 let hasBracket = cond.endsWith('{');
                 if (hasBracket) cond = cond.slice(0, -1).trim();
 
-                // Equality Translation Patch for IF conditions (Converts single = to === behind scenes)
-                cond = cond.replace(/(?<![<>=!])=(?![=])/g, "===");
+                cond = cond.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                 stringBank.forEach((str, index) => {
                     cond = cond.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
@@ -490,9 +583,7 @@ class PyCJCompiler {
                 const indentation = currentLineText.match(/^(\s*)/)[1];
                 currentLineAssembled = `${indentation}if (${cond}) {`;
                 
-                if (!hasBracket) {
-                    pendingSingleLineClosures++;
-                }
+                if (!hasBracket) pendingSingleLineClosures++;
                 generatedStatement = false;
                 this.scopes.push(new Set());
                 this.blockStack.push('normal');
@@ -503,8 +594,7 @@ class PyCJCompiler {
                 let hasBracket = cond.endsWith('{');
                 if (hasBracket) cond = cond.slice(0, -1).trim();
 
-                // Equality Translation Patch for ELIF conditions (Converts single = to === behind scenes)
-                cond = cond.replace(/(?<![<>=!])=(?![=])/g, "===");
+                cond = cond.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                 stringBank.forEach((str, index) => {
                     cond = cond.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
@@ -512,9 +602,7 @@ class PyCJCompiler {
                 const indentation = currentLineText.match(/^(\s*)/)[1];
                 currentLineAssembled = `${indentation}else if (${cond}) {`;
                 
-                if (!hasBracket) {
-                    pendingSingleLineClosures++;
-                }
+                if (!hasBracket) pendingSingleLineClosures++;
                 generatedStatement = false;
                 this.scopes.push(new Set());
                 this.blockStack.push('normal');
@@ -526,9 +614,7 @@ class PyCJCompiler {
                 const indentation = currentLineText.match(/^(\s*)/)[1];
                 currentLineAssembled = `${indentation}else {`;
                 
-                if (!hasBracket) {
-                    pendingSingleLineClosures++;
-                }
+                if (!hasBracket) pendingSingleLineClosures++;
                 generatedStatement = false;
                 this.scopes.push(new Set());
                 this.blockStack.push('normal');
@@ -544,7 +630,7 @@ class PyCJCompiler {
                     hasImagineKeyword = true;
                 }
                 
-                if (/^[a-zA-Z_][a-zA-Z0-9_\.]*$/.test(leftHandSideIdent)) {
+                if (/^[a-zA-Z_][a-zA-Z0-9_\.\[\]\s]*$/.test(leftHandSideIdent) || leftHandSideIdent.includes('.')) {
                     let rightHandSideVal = parts.slice(1).join('=').trim();
                     stringBank.forEach((str, index) => {
                         rightHandSideVal = rightHandSideVal.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
@@ -553,11 +639,11 @@ class PyCJCompiler {
                     
                     let currentBlock = this.blockStack[this.blockStack.length - 1];
                     
-                    if (currentBlock === 'structure') {
+                    if (currentBlock === 'structure' && hasImagineKeyword) {
                         currentLineAssembled = `${indentation}__struct_obj.${leftHandSideIdent} = ${rightHandSideVal};`;
                     } 
                     else {
-                        if (leftHandSideIdent.includes('.')) {
+                        if (leftHandSideIdent.includes('.') || leftHandSideIdent.includes('[')) {
                             currentLineAssembled = `${indentation}${leftHandSideIdent} = ${rightHandSideVal};`;
                         } else if (this.hasVariableInLocalScope(leftHandSideIdent)) {
                             currentLineAssembled = `${indentation}${leftHandSideIdent} = ${rightHandSideVal};`;
@@ -575,6 +661,21 @@ class PyCJCompiler {
             }
 
             if (!currentLineAssembled) {
+                let checkStr = operationalText;
+                stringBank.forEach((str, index) => {
+                    checkStr = checkStr.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, '');
+                });
+                checkStr = checkStr.trim();
+
+                if (checkStr !== "" && checkStr !== "}") {
+                    this.raiseError(
+                        "Invalid PyCJ Grammar Syntax",
+                        `Unrecognized statement context found ("${operationalText}"). This engine strictly rejects native foreign structures.`,
+                        currentLineNumber,
+                        "Verify your instruction set follows PyCJ keywords. If trying to output text data, use 'output(...)' instead of JavaScript targets."
+                    );
+                }
+
                 let lineToAssemble = currentLineText;
                 stringBank.forEach((str, index) => {
                     lineToAssemble = lineToAssemble.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
@@ -602,9 +703,7 @@ class PyCJCompiler {
                         compiledJSOutput.push(`${indentation}}`);
                     }
                     
-                    if (this.scopes.length > 1) {
-                        this.scopes.pop();
-                    }
+                    if (this.scopes.length > 1) this.scopes.pop();
                     pendingSingleLineClosures--;
                 }
             }
@@ -624,10 +723,7 @@ const PyCJStudioIDE = {
             const closeBtn = document.getElementById('close-upgrade-btn');
 
             if (!modal) return resolve(false);
-
-            if (msgEl && messageHtml) {
-                msgEl.innerHTML = messageHtml;
-            }
+            if (msgEl && messageHtml) msgEl.innerHTML = messageHtml;
 
             modal.classList.add('active');
 
@@ -660,7 +756,7 @@ const PyCJStudioIDE = {
             txt += ' ';
         }
 
-        const unifiedTokensRegex = /(\/\/.*|#.*)|(p?".*?"|'.*?')|\b(imagine|repeat|for|if|elif|else|ask|and|or|not|function|return|structure)\b|\b(output|add|remove|max|min)\b|\b(str|string|int|float|bool)\b|\b(\d+(?:\.\d+)?)\b/gi;
+        const unifiedTokensRegex = /(\/\/.*|#.*)|(p?".*?"|'.*?')|\b(imagine|repeat|for|if|elif|else|ask|and|or|not|function|return|structure|pass|stop|move)\b|\b(output|add|remove|max|min)\b|\b(str|string|int|float|bool)\b|\b(\d+(?:\.\d+)?)\b/gi;
 
         let HTMLOutput = txt.replace(unifiedTokensRegex, (match, comment, string, keyword, builtin, datatype, number) => {
             if (comment !== undefined) return `<span class="token-comment">${match}</span>`;
@@ -923,79 +1019,16 @@ const PyCJStudioIDE = {
             localStorage.setItem('pycj-version', e.target.value);
         });
 
-        const syntaxExplanationCode = `# =========================================================
-# Category 1: PyCJ v1 Fundamentals (Variables, Arrays, Loops)
-# =========================================================
-
-# 1. Variables and Data Types
-imagine userName = "Developer"
-imagine scores = [85, 92, 78, 99, 90]
-
-# 2. P-Strings (String Interpolation)
-imagine intro = p"Welcome {userName} to the PyCJ Language Platform!"
-output(intro)
-
-# 3. Professional Array Operations
-scores.add(88)
-imagine highestScore = scores.max()
-imagine lowestScore = scores.min()
-output(p"Scores Array after add: {scores}")
-output(p"Highest score: {highestScore}, Lowest score: {lowestScore}")
-
-# 4. Conditional Control Flow (if, elif, else)
-if highestScore >= 90 {
-    output("Excellent performance detected!")
-} elif highestScore >= 70 {
-    output("Good performance.")
-} else {
-    output("Needs improvement.")
-}
-
-# 5. Iteration Loops (for & repeat)
-output("Running a sequential loop from 1 to 3:")
-for (imagine i = 1, i <= 3, i++) {
-    output(p"Loop index count: {i}")
-}
-
-imagine count = 3
-output("Running a repeat condition loop:")
-repeat count > 0 {
-    output(p"Countdown: {count}")
-    count = count - 1
-}
-
-# =========================================================
-# Category 2: PyCJ v1.1 Advanced Features (Functions & Objects)
-# =========================================================
-# NOTE: Executing below will prompt a version update to v1.1!
-
-# 1. Modular Reusable Functions
-function calculateBonus(baseScore, modifier) {
-    imagine finalScore = baseScore + modifier
-    return finalScore
-}
-
-imagine adjustedScore = calculateBonus(highestScore, 5)
-output(p"Adjusted top score with function bonus: {adjustedScore}")
-
-# 2. Structure Definitions (Custom Objects / Data Maps)
-structure PlayerProfile {
-    name = userName
-    rank = "Elite Tier"
-    active = true
-}
-
-imagine player = PlayerProfile()
-output(p"Player Structure Created -> Name: {player.name}, Rank: {player.rank}")`;
+        const defaultSyntaxShowcase = `# =========================================================\n# PyCJ Structural Syntax Testing Suite\n# =========================================================\n\nstructure student() {\n    imagine name = "Arshman"\n    imagine age = 15\n    imagine marks = [10, 20, 30]\n}\n\nimagine s = student()\noutput(s.name)\n\nimagine arr = []\narr.add(10, 20, 30)\noutput(p"Max element is: {arr.max()}")\n\nimagine i = 10\nfor (, i <= 15, i++) {\n    output(p"Iterating: {i}")\n}`;
 
         if (editor) {
             const savedAutosave = localStorage.getItem('pycj-autosave') === 'true';
             if (autosaveToggle) autosaveToggle.checked = savedAutosave;
 
             if (savedAutosave) {
-                editor.value = localStorage.getItem('pycj-saved-code') || syntaxExplanationCode;
+                editor.value = localStorage.getItem('pycj-saved-code') || defaultSyntaxShowcase;
             } else {
-                editor.value = syntaxExplanationCode;
+                editor.value = defaultSyntaxShowcase;
             }
 
             editor.addEventListener('input', () => {
@@ -1054,8 +1087,6 @@ output(p"Player Structure Created -> Name: {player.name}, Rank: {player.rank}")`
                     return (async () => {
                         try {
                             let __has_returned = false;
-                            
-                            // Define evaluation context that intercepts global scoped structural returns
                             ${executableJSCode.includes('window.PyCJTerminalIO.printSuccess') ? executableJSCode : executableJSCode + '\nwindow.PyCJTerminalIO.printSuccess(0);'}
                         } catch(runtimeError) {
                             window.PyCJTerminalIO.printError("Runtime Error", runtimeError.message, "Execution Phase", "Check logic values.");
