@@ -1,9 +1,10 @@
 /**
- * PyCJ Language Engine Core Specification (v1.8.5 - Complete Syntax Convergence)
+ * PyCJ Language Engine Core Specification (v1.8.7 - Stable Expression Engine)
  * Added: Empty initial slot validation for loops e.g., for ( , i <= 50 , i ++)
  * Added: True/False capitalized casing support during code parsing
- * Added: Integer Floor Division (//) translation layer mapped to Math.floor()
  * Added: Multi-argument resolution support inside .add(...) method configurations
+ * FIXED: Context-isolated Floor Division (//) translation layer without keyword corruption
+ * FIXED: Accurate evaluation bounds for mathematical operands preventing calculation doubling
  * FIXED: Advanced parser support for multi-line block comments
  * FIXED: Hardened grammar interceptor ensuring native JS blocks throw clear PyCJ errors
  */
@@ -234,9 +235,62 @@ class PyCJCompiler {
         }
     }
 
+    parseFloorDivision(expr) {
+        while (expr.includes('//')) {
+            let idx = expr.indexOf('//');
+            
+            // Look backward for the left-hand operand
+            let leftIdx = idx - 1;
+            let parenDepth = 0;
+            while (leftIdx >= 0) {
+                let char = expr[leftIdx];
+                if (char === ')') parenDepth++;
+                else if (char === '(') {
+                    parenDepth--;
+                    if (parenDepth < 0) break;
+                }
+                
+                if (parenDepth === 0) {
+                    if (char === ';' || char === ',' || char === '=' || char === '+' || char === '-' || char === '*' || char === '/' || char === '<' || char === '>' || char === '&' || char === '|' || char === '!') {
+                        if (!(char === '/' && expr[leftIdx - 1] === '/')) {
+                            break;
+                        }
+                    }
+                }
+                leftIdx--;
+            }
+            leftIdx = leftIdx + 1;
+            
+            // Look forward for the right-hand operand
+            let rightIdx = idx + 2;
+            parenDepth = 0;
+            while (rightIdx < expr.length) {
+                let char = expr[rightIdx];
+                if (char === '(') parenDepth++;
+                else if (char === ')') {
+                    parenDepth--;
+                    if (parenDepth < 0) break;
+                }
+                
+                if (parenDepth === 0 && (char === ';' || char === ',' || char === '=' || char === '+' || char === '-' || char === '*' || char === '/' || char === '<' || char === '>' || char === '&' || char === '|' || char === '!')) {
+                    if (!(char === '/' && expr[rightIdx + 1] === '/')) {
+                        break;
+                    }
+                }
+                rightIdx++;
+            }
+            
+            let leftSide = expr.substring(leftIdx, idx).trim();
+            let rightSide = expr.substring(idx + 2, rightIdx).trim();
+            let replacement = `Math.floor(${leftSide} / ${rightSide})`;
+            
+            expr = expr.substring(0, leftIdx) + replacement + expr.substring(rightIdx);
+        }
+        return expr;
+    }
+
     compile() {
         let workingSource = this.source;
-        workingSource = workingSource.replace(/([^/\s\d]+|[\d.]+)\s*\/\/\s*([^/\s\d]+|[\d.]+)/g, 'Math.floor($1 / $2)');
 
         if (workingSource.includes('/*')) {
             let openIdx = workingSource.indexOf('/*');
@@ -347,6 +401,11 @@ class PyCJCompiler {
             currentLineText = currentLineText.replace(/\bor\b/gi, '||');
             currentLineText = currentLineText.replace(/\bnot\b/gi, '!');
 
+            let hadInternalMethodCall = false;
+            if (currentLineText.includes('.max(') || currentLineText.includes('.min(') || currentLineText.includes('.add(') || currentLineText.includes('.remove(')) {
+                hadInternalMethodCall = true;
+            }
+
             currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.max\([^)]*\)/g, 'Math.max(...$1)');
             currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.min\([^)]*\)/g, 'Math.min(...$1)');
             currentLineText = currentLineText.replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.add\(([^)]+)\)/g, '$1.push($2)');
@@ -365,6 +424,7 @@ class PyCJCompiler {
                                             .replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.min\([^)]*\)/g, 'Math.min(...$1)')
                                             .replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.add\(([^)]+)\)/g, '$1.push($2)')
                                             .replace(/([a-zA-Z_][a-zA-Z0-9_\.]*)\.remove\(([^)]+)\)/g, '(function(a,v){let i=a.indexOf(v);if(i!==-1)a.splice(i,1);return a;})($1,$2)');
+                        cleanExpr = this.parseFloorDivision(cleanExpr);
                         return `\${${cleanExpr}}`;
                     });
                     return `\`${mappedBody}\``;
@@ -407,6 +467,8 @@ class PyCJCompiler {
                 const outputMatch = operationalText.match(/^output\s*\(([\s\S]*)\)/i);
                 let innerArgs = outputMatch[1];
                 
+                innerArgs = this.parseFloorDivision(innerArgs);
+
                 if (innerArgs.includes('\\n')) {
                     innerArgs = innerArgs.replace(/\\n/g, ' + "\\n" + ');
                 }
@@ -469,6 +531,9 @@ class PyCJCompiler {
 
             else if (operationalText.toLowerCase().startsWith('return ') || operationalText.toLowerCase() === 'return') {
                 let retVal = operationalText.toLowerCase().startsWith('return ') ? operationalText.substring(7).trim() : "0";
+                
+                retVal = this.parseFloorDivision(retVal);
+
                 stringBank.forEach((str, index) => {
                     retVal = retVal.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
                 });
@@ -513,6 +578,10 @@ class PyCJCompiler {
                         let condition = loopParts[1].trim();
                         let increment = loopParts[2].trim();
 
+                        initialization = this.parseFloorDivision(initialization);
+                        condition = this.parseFloorDivision(condition);
+                        increment = this.parseFloorDivision(increment);
+
                         condition = condition.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                         let loopVarName = "";
@@ -555,6 +624,7 @@ class PyCJCompiler {
                 let hasBracket = loopCond.endsWith('{');
                 if (hasBracket) loopCond = loopCond.slice(0, -1).trim();
 
+                loopCond = this.parseFloorDivision(loopCond);
                 loopCond = loopCond.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                 stringBank.forEach((str, index) => {
@@ -575,6 +645,7 @@ class PyCJCompiler {
                 let hasBracket = cond.endsWith('{');
                 if (hasBracket) cond = cond.slice(0, -1).trim();
 
+                cond = this.parseFloorDivision(cond);
                 cond = cond.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                 stringBank.forEach((str, index) => {
@@ -594,6 +665,7 @@ class PyCJCompiler {
                 let hasBracket = cond.endsWith('{');
                 if (hasBracket) cond = cond.slice(0, -1).trim();
 
+                cond = this.parseFloorDivision(cond);
                 cond = cond.replace(/(?<![<>=!])=(?![=])/g, "=== ");
 
                 stringBank.forEach((str, index) => {
@@ -632,6 +704,9 @@ class PyCJCompiler {
                 
                 if (/^[a-zA-Z_][a-zA-Z0-9_\.\[\]\s]*$/.test(leftHandSideIdent) || leftHandSideIdent.includes('.')) {
                     let rightHandSideVal = parts.slice(1).join('=').trim();
+                    
+                    rightHandSideVal = this.parseFloorDivision(rightHandSideVal);
+
                     stringBank.forEach((str, index) => {
                         rightHandSideVal = rightHandSideVal.replaceAll(`__PYCJ_STR_TOKEN_${index}__`, str);
                     });
@@ -667,7 +742,7 @@ class PyCJCompiler {
                 });
                 checkStr = checkStr.trim();
 
-                if (checkStr !== "" && checkStr !== "}") {
+                if (checkStr !== "" && checkStr !== "}" && !hadInternalMethodCall) {
                     this.raiseError(
                         "Invalid PyCJ Grammar Syntax",
                         `Unrecognized statement context found ("${operationalText}"). This engine strictly rejects native foreign structures.`,
@@ -709,7 +784,13 @@ class PyCJCompiler {
             }
         }
 
-        return compiledJSOutput.join('\n');
+        // Check if there is an explicit top-level return statement.
+        // If not, append the final default success sequence.
+        const combinedResult = compiledJSOutput.join('\n');
+        if (!combinedResult.includes('window.PyCJTerminalIO.printSuccess')) {
+            return combinedResult + '\nwindow.PyCJTerminalIO.printSuccess(0);';
+        }
+        return combinedResult;
     }
 }
 
@@ -1087,7 +1168,7 @@ const PyCJStudioIDE = {
                     return (async () => {
                         try {
                             let __has_returned = false;
-                            ${executableJSCode.includes('window.PyCJTerminalIO.printSuccess') ? executableJSCode : executableJSCode + '\nwindow.PyCJTerminalIO.printSuccess(0);'}
+                            ${executableJSCode}
                         } catch(runtimeError) {
                             window.PyCJTerminalIO.printError("Runtime Error", runtimeError.message, "Execution Phase", "Check logic values.");
                         }
